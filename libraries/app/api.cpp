@@ -104,6 +104,14 @@ namespace graphene { namespace app {
           if( _app.get_plugin( "debug_witness" ) )
              _debug_api = std::make_shared< graphene::debug_witness::debug_api >( std::ref(_app) );
        }
+       else if( api_name == "zmq_api" )
+       {
+          // can only enable this API if the plugin was loaded
+          if( _app.get_plugin( "zmq_plugin" ) ){
+             _zmq_api = std::make_shared< graphene::zmq_plugin::zmq_api >( std::ref(_app) );
+          }
+             
+       }
        return;
     }
 
@@ -256,6 +264,12 @@ namespace graphene { namespace app {
     {
        FC_ASSERT(_debug_api);
        return *_debug_api;
+    }
+
+    fc::api<graphene::zmq_plugin::zmq_api> login_api::zmq() const
+    {
+       FC_ASSERT(_zmq_api);
+       return *_zmq_api;
     }
 
     vector<operation_history_object> history_api::get_account_history( account_id_type account, 
