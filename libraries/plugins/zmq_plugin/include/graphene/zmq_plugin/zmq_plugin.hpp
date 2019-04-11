@@ -38,13 +38,42 @@ namespace graphene { namespace zmq_plugin {
 
 typedef std::map<asset_aid_type,std::set<account_uid_type>> assetmoves;
 
+struct zmq_transaction : public processed_transaction
+{
+   zmq_transaction( const processed_transaction& trx ): processed_transaction(trx){
+      trx_id = id();
+   }
+
+   transaction_id_type trx_id;
+};
+
+struct zmq_block : public signed_block {
+   zmq_block(){}
+   zmq_block( const signed_block block ): signed_block( block ){
+      block_id = id();
+      block_id_num = block_num();
+      trxs.reserve( transactions.size() );
+      for( const processed_transaction& tx : transactions )
+         trxs.push_back( tx );
+      transactions.clear();
+   }
+   zmq_block( const zmq_block& block ) = default;
+
+   block_id_type              block_id;
+   uint32_t                   block_id_num;
+   vector< zmq_transaction >  trxs;
+};
+
 struct currency_balance {
    account_uid_type           account_name;
-   asset                      balance;
+   account_uid_type           issuer;
+   string                     balance;
+   string                     prepaid;
+   share_type                 csaf;
    bool                       deleted = false;
 
-   currency_balance(account_uid_type _account_name, asset _balance):
-      account_name(_account_name),balance(_balance){
+   currency_balance(account_uid_type _account_name, account_uid_type _issuer, string _balance, string _prepaid, share_type _csaf):
+      account_name(_account_name),issuer(_issuer),balance(_balance),prepaid(_prepaid),csaf(_csaf){
    }
 };
 
@@ -70,10 +99,42 @@ struct zmq_accepted_block_object {
    signature_type       accepted_witness_signature;
 };
 
+
+struct zmq_block_object {
+   zmq_block                     block;
+   vector<currency_balance>      currency_balances;
+   vector< transaction_id_type > transaction_ids;
+   uint32_t                      last_irreversible_block;
+};
+
 struct zmq_accounts_info_object {
    // vector<voter_info>           voter_infos;
    vector<currency_balance>     currency_balances;
 };
+
+
+class assets_cache_object : public abstract_object<assets_cache_object>
+{
+   public:
+      static const uint8_t space_id = protocol_ids;
+      static const uint8_t type_id  = assets_cache_object_type;
+
+      asset_aid_type asset_id;
+      asset_object ao;
+      fc::time_point_sec last_modify;// = now();
+};
+
+struct by_aid;
+struct by_last_modify;
+typedef multi_index_container<
+   assets_cache_object,
+   indexed_by<
+      ordered_unique< tag<by_id>, member< object, object_id_type, &object::id > >,
+      ordered_unique< tag<by_aid>, member< assets_cache_object, asset_aid_type, &assets_cache_object::asset_id > >,
+      ordered_non_unique< tag<by_last_modify>, member<assets_cache_object, fc::time_point_sec, &assets_cache_object::last_modify> >
+   >
+> assets_cache_multi_index_type;
+typedef generic_index<assets_cache_object, assets_cache_multi_index_type> asset_cache_index;
 
 class zmq_plugin_impl;
 
@@ -105,9 +166,14 @@ class zmq_plugin : public graphene::app::plugin
 //             (global_action_seq)(block_num)(block_time)(action_trace)
 //             (resource_balances)(voter_infos)(currency_balances)(last_irreversible_block) )
 
+FC_REFLECT_DERIVED( graphene::zmq_plugin::zmq_transaction,(graphene::chain::processed_transaction),
+            (trx_id) )
+
+FC_REFLECT_DERIVED( graphene::zmq_plugin::zmq_block,(graphene::chain::signed_block),
+            (block_id)(block_id_num)(trxs) )
 
 FC_REFLECT( graphene::zmq_plugin::currency_balance,
-            (account_name)(balance)(deleted) )
+            (account_name)(issuer)(balance)(prepaid)(csaf)(deleted) )
 
 FC_REFLECT( graphene::zmq_plugin::zmq_operation_object,
             (block_num)(block_time)(trx_id)(operation_trace)(currency_balances)(last_irreversible_block) )
@@ -118,6 +184,11 @@ FC_REFLECT( graphene::zmq_plugin::zmq_fork_block_object,
 FC_REFLECT( graphene::zmq_plugin::zmq_accepted_block_object,
             (accepted_block_num)(accepted_block_timestamp)(accepted_block_witness)(accepted_witness_signature) )
 
+FC_REFLECT( graphene::zmq_plugin::zmq_block_object,
+            (block)(currency_balances)(last_irreversible_block) )
 
 FC_REFLECT( graphene::zmq_plugin::zmq_accounts_info_object,
             (currency_balances) )
+
+FC_REFLECT_DERIVED( graphene::zmq_plugin::assets_cache_object,(graphene::db::object),
+            (asset_id)(ao)(last_modify) )

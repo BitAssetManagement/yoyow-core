@@ -61,6 +61,7 @@ class zmq_plugin_impl
         zmq::socket_t   sender_socket;
         string          socket_bind_str;
         uint32_t        _end_block = 0;
+        size_t          asset_cache_size = 10;
 
 
         zmq_plugin_impl(zmq_plugin& _plugin): 
@@ -91,6 +92,79 @@ class zmq_plugin_impl
             return op.which() == operation::tag<X>::value;
         }
 
+        void pruge_asset_cache(){
+            const auto&  assets_cache = database().get_index_type<asset_cache_index>().indices().get<by_last_modify>();
+            if( assets_cache.size() < asset_cache_size ) return ;
+
+            auto itr = assets_cache.begin();
+            if( itr != assets_cache.end() ){
+                database().remove(*itr);
+            }
+        }
+
+        asset_object get_asset_for_assets_cache( asset_aid_type asset_id ){
+            asset_object result;
+            const auto&  assets_cache = database().get_index_type<asset_cache_index>().indices().get<by_aid>();
+            auto as = assets_cache.find(asset_id);
+
+            if( as != assets_cache.end() ){
+                database().modify<assets_cache_object>( *as , [&](assets_cache_object& ac ){
+                    ac.last_modify = fc::time_point::now();
+                });
+                return as->ao;
+            } else {
+                auto ass = database().get_asset_by_aid(asset_id);
+                auto test = database().create<assets_cache_object>( [&](assets_cache_object& ac ){
+                    ac.asset_id = asset_id;
+                    ac.ao = ass;
+                    ac.last_modify = fc::time_point::now();
+                });
+                // ilog("${log}",("log",test.id));
+                pruge_asset_cache();
+                return ass;
+            }
+
+            return result;
+        }
+
+
+        uint64_t get_precision( uint8_t decimals ) const{
+            uint64_t p10 = 1;
+            uint64_t p = decimals;
+            while( p > 0  ) {
+                p10 *= 10; --p;
+            }
+            return p10;
+        }
+
+        string get_asset_string( asset_object ao, asset balance ){
+            auto precision = get_precision(ao.precision);
+            auto amount = balance.amount.value;
+            string sign = amount < 0 ? "-" : "";
+            int64_t abs_amount = std::abs(amount);
+            string result = fc::to_string( static_cast<int64_t>(abs_amount) / precision );
+            if( ao.precision )
+            {
+                auto fract = static_cast<int64_t>(abs_amount) % precision;
+                result += "." + fc::to_string(precision + fract).erase(0,1);
+            }
+            return sign + result + " " + ao.symbol;
+        }
+
+        currency_balance get_currency_balance( account_uid_type uuid, asset_aid_type asset_id, asset balance ){
+            auto ao = get_asset_for_assets_cache( asset_id );
+            auto balance_str = get_asset_string( ao, balance );
+            string prepaid = "0.00000 " + ao.symbol;
+            share_type csaf = 0;
+            if( asset_id == 0 ){
+                auto aco = database().get_account_statistics_by_uid(uuid);
+                auto yoyo_ao = get_asset_for_assets_cache(0);
+                prepaid = get_asset_string(yoyo_ao, asset(aco.prepaid,0));
+                csaf = aco.csaf;
+            }
+            return currency_balance{ uuid, ao.issuer, balance_str, prepaid, csaf};
+        }
+
         void on_accepted_block(const signed_block& b){
             auto block_num = b.block_num();
             if( block_num <= _end_block ){
@@ -102,27 +176,22 @@ class zmq_plugin_impl
             
             _end_block = block_num;
 
-            // 块信息
-            {
-                zmq_accepted_block_object zabo;
-                zabo.accepted_block_num = block_num;
-                zabo.accepted_block_timestamp = b.timestamp;
-                zabo.accepted_block_witness = b.witness;
-                zabo.accepted_witness_signature = b.witness_signature;
-                send_msg(fc::json::to_string(zabo), MSGTYPE_ACCEPTED_BLOCK, 0);
-            }
-
+            zmq_block_object zbo;
             //  transaction 并解析。
             for(auto& trx : b.transactions){
                 for(auto& operation : trx.operations){
                     // 解析 operation ,并获取余额。
-                    on_operation_trace( operation, b, trx.id());
+                    on_operation_trace( zbo, operation, b );
                 }
             }
+
+            zbo.block = b;
+            zbo.last_irreversible_block = database().get_dynamic_global_properties().last_irreversible_block_num;
+
+            send_msg(fc::json::to_string(zbo), MSGTYPE_ACCEPTED_BLOCK, 0);
         }
 
-        void on_operation_trace( const operation& op, const signed_block& b, transaction_id_type trx_id ){
-            zmq_operation_object zoo;
+        void on_operation_trace(zmq_block_object& zbo,  const operation& op, const signed_block& b){
             std::set<account_uid_type> accounts;
             assetmoves asset_moves;
             find_account_and_tokens( op, accounts, asset_moves );
@@ -134,14 +203,17 @@ class zmq_plugin_impl
                 for(auto acc_itr = asset_itr->second.begin(); acc_itr != asset_itr->second.end(); acc_itr++){
                     auto acc = *acc_itr;
                     // ilog("${acc} ${ass}",("acc",acc)("ass",asset_id));
-                    zoo.currency_balances.emplace_back(currency_balance{ acc, database().get_balance(*acc_itr, asset_id) });
+                    try{
+                        zbo.currency_balances.emplace_back( get_currency_balance(acc, asset_id, database().get_balance( acc, asset_id)) );
+                    } catch( fc::exception e) {
+                        elog("get asset wrong ${asset_id} details: ${error}",("asset_id",asset_id)("error",e.to_detail_string()));
+                    } catch( ... ){
+                        elog("get asset wrong ${asset_id}",("asset_id",asset_id));
+                    }
                 }
             }
-            zoo.operation_trace = op;
-            zoo.block_num = b.block_num();
-            zoo.block_time = b.timestamp;
-            zoo.trx_id = trx_id;
-            send_msg(fc::json::to_string(zoo), MSGTYPE_ACTION_TRACE, 0);
+
+            // send_msg(fc::json::to_string(zoo), MSGTYPE_ACTION_TRACE, 0);
         }
 
         void find_account_and_tokens( const operation& op, std::set<account_uid_type>& accounts, assetmoves& asset_moves ){
@@ -174,7 +246,7 @@ class zmq_plugin_impl
             ilog("get_accounts_balances begin");
             int counter = 0;
             for(auto itr = idx.begin(); itr != idx.end(); itr++){
-                ilog("${uid} ${name}",("uid",itr->uid)("name",itr->name));
+                // ilog("${uid} ${name}",("uid",itr->uid)("name",itr->name));
                 send_balances_by_account(itr->uid, assets_id);
                 counter++;
             }
@@ -194,7 +266,7 @@ class zmq_plugin_impl
             for( auto asset_id = assets_id.begin(); asset_id != assets_id.end(); asset_id++){
                 auto itr = index.find(boost::make_tuple(owner, *asset_id));
                 if( itr != index.end()){
-                    zai.currency_balances.emplace_back(currency_balance{ owner, itr->get_balance() });
+                    zai.currency_balances.emplace_back( get_currency_balance( owner, *asset_id, itr->get_balance() ) );
                     if( counter%100 ==0 ){
                         send_msg(fc::json::to_string(zai), MSGTYPE_BALANCE_RESOURCE, 0);
                         zai.currency_balances.clear();
@@ -229,20 +301,27 @@ void zmq_plugin::plugin_set_program_options(
    boost::program_options::options_description& cfg
    )
 {
-//    cli.add_options()
-//          ("track-account", boost::program_options::value<string>()->default_value("[]"), "Account ID to track history for (specified as a JSON array)")
-//          ("partial-operations", boost::program_options::value<bool>(), "Keep only those operations in memory that are related to account history tracking")
-//          ("max-ops-per-account", boost::program_options::value<uint32_t>(), "Maximum number of operations per account will be kept in memory")
-//          ;
-//    cfg.add(cli);
+   cfg.add_options()
+         (SENDER_BIND_OPT, boost::program_options::value<string>()->default_value(SENDER_BIND_DEFAULT),"ZMQ Sender Socket binding")
+         ("zmq-block-start", boost::program_options::value<uint32_t>()->default_value(0), "get block after block-start")
+         ("zmq-asset-cache-size", boost::program_options::value<size_t>()->default_value(10), "asset cahce size")
+         ;
+   cli.add(cfg);
 }
 
 void zmq_plugin::plugin_initialize(const boost::program_options::variables_map& options)
 {
     ilog("zmq plugin init.");
-    my->sender_socket.bind(SENDER_BIND_DEFAULT);
-    my->database();
-    database().applied_block.connect( [&]( const signed_block& b){ my->on_accepted_block(b); } );
+    my->sender_socket.bind(options.at(SENDER_BIND_OPT).as<string>());
+    my->asset_cache_size = options.at("zmq-asset-cache-size").as<size_t>();
+    // ilog("${asset_cache_size}",("asset_cache_size",my->asset_cache_size));
+    uint32_t block_num_start = options.at("zmq-block-start").as<uint32_t>();
+
+    database().add_index< primary_index< asset_cache_index > >();my->pruge_asset_cache();
+    database().applied_block.connect( [this,block_num_start]( const signed_block& b){ 
+        if( b.block_num() >= block_num_start )
+            my->on_accepted_block(b); 
+    } );
     // 因所有 operation 的结果都存在 block 里， 所以无需 on_pending_transaction 信号
     // database().on_pending_transaction.connect( [&]( const signed_transaction& trx){ my->on_pending_transaction(trx); } );
 }

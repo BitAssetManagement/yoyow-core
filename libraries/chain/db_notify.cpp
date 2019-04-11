@@ -339,7 +339,7 @@ void get_relevant_accounts( const object* obj, flat_set<account_uid_type>& accou
            assert( aobj != nullptr );
            operation_get_impacted_account_uids( aobj->op, accounts );
            break;
-        }
+        } case assets_cache_object_type: break;
       }
    }
    else if( obj->id.space() == implementation_ids )
