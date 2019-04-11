@@ -195,8 +195,6 @@ class zmq_plugin_impl
             std::set<account_uid_type> accounts;
             assetmoves asset_moves;
             find_account_and_tokens( op, accounts, asset_moves );
-
-
             // 获取余额
             for(auto asset_itr = asset_moves.begin(); asset_itr != asset_moves.end(); asset_itr++){
                 auto asset_id = asset_itr->first;
@@ -212,7 +210,6 @@ class zmq_plugin_impl
                     }
                 }
             }
-
             // send_msg(fc::json::to_string(zoo), MSGTYPE_ACTION_TRACE, 0);
         }
 

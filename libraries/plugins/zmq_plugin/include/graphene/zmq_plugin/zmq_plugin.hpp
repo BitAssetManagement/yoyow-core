@@ -32,10 +32,7 @@
 
 namespace graphene { namespace zmq_plugin {
    using namespace chain;
-   //using namespace graphene::db;
-   //using boost::multi_index_container;
-   //using namespace boost::multi_index;
-
+   
 typedef std::map<asset_aid_type,std::set<account_uid_type>> assetmoves;
 
 struct zmq_transaction : public processed_transaction
@@ -82,8 +79,6 @@ struct zmq_operation_object {
    fc::time_point_sec            block_time;
    transaction_id_type           trx_id;
    operation                     operation_trace;
-   // vector<resource_balance>      resource_balances;
-   // vector<voter_info>            voter_infos;
    vector<currency_balance>      currency_balances;
    uint32_t                      last_irreversible_block;
 };
@@ -91,24 +86,13 @@ struct zmq_operation_object {
 struct zmq_fork_block_object {
    uint32_t             invalid_block_num;
 };
-
-struct zmq_accepted_block_object {
-   uint32_t             accepted_block_num;
-   fc::time_point_sec   accepted_block_timestamp;
-   account_uid_type     accepted_block_witness;
-   signature_type       accepted_witness_signature;
-};
-
-
 struct zmq_block_object {
    zmq_block                     block;
    vector<currency_balance>      currency_balances;
-   vector< transaction_id_type > transaction_ids;
    uint32_t                      last_irreversible_block;
 };
 
 struct zmq_accounts_info_object {
-   // vector<voter_info>           voter_infos;
    vector<currency_balance>     currency_balances;
 };
 
@@ -161,11 +145,6 @@ class zmq_plugin : public graphene::app::plugin
 
 } } //graphene::zmq_plugin
 
-
-// FC_REFLECT( zmqplugin::zmq_action_object,
-//             (global_action_seq)(block_num)(block_time)(action_trace)
-//             (resource_balances)(voter_infos)(currency_balances)(last_irreversible_block) )
-
 FC_REFLECT_DERIVED( graphene::zmq_plugin::zmq_transaction,(graphene::chain::processed_transaction),
             (trx_id) )
 
@@ -180,9 +159,6 @@ FC_REFLECT( graphene::zmq_plugin::zmq_operation_object,
 
 FC_REFLECT( graphene::zmq_plugin::zmq_fork_block_object,
             (invalid_block_num) )
-
-FC_REFLECT( graphene::zmq_plugin::zmq_accepted_block_object,
-            (accepted_block_num)(accepted_block_timestamp)(accepted_block_witness)(accepted_witness_signature) )
 
 FC_REFLECT( graphene::zmq_plugin::zmq_block_object,
             (block)(currency_balances)(last_irreversible_block) )
