@@ -229,12 +229,6 @@ class zmq_plugin_impl
 
             }
         }
-
-        void on_pending_transaction(const signed_transaction& trx){
-            send_msg(fc::json::to_string(trx), MSGTYPE_ACTION_TRACE, 0);
-        }
-
-
         string get_accounts_balances(const std::vector<asset_aid_type>& assets_id){
             zmq_accounts_info_object zai;
             const auto& idx = database().get_index_type<account_index>().indices().get<by_id>();
