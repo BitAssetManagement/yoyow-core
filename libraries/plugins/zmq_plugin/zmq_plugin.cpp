@@ -218,18 +218,46 @@ class zmq_plugin_impl
 
         void find_account_and_tokens( const operation& op, std::set<account_uid_type>& accounts, assetmoves& asset_moves ){
             if( contains<transfer_operation>( op )){
+
                 auto result_op = op.get<transfer_operation>();
                 asset_moves[result_op.amount.asset_id].insert(result_op.from);
                 asset_moves[result_op.amount.asset_id].insert(result_op.to);
+
             } else if( contains<account_update_proxy_operation>( op )){
 
             } else if( contains<override_transfer_operation>( op )){
+
                 auto result_op = op.get<override_transfer_operation>();
                 asset_moves[result_op.amount.asset_id].insert(result_op.from);
                 asset_moves[result_op.amount.asset_id].insert(result_op.to);
-            } else if( contains<account_enable_allowed_assets_operation>( op )){
 
-            } else if( contains<account_update_allowed_assets_operation>( op )){
+            } else if( contains<asset_issue_operation>( op )){
+
+                auto result_op = op.get<asset_issue_operation>();
+                asset_moves[result_op.asset_to_issue.asset_id].insert(result_op.issuer);
+                asset_moves[result_op.asset_to_issue.asset_id].insert(result_op.issue_to_account);
+
+            } else if( contains<asset_claim_fees_operation>( op )){
+
+                auto result_op = op.get<asset_claim_fees_operation>();
+                asset_moves[result_op.amount_to_claim.asset_id].insert(result_op.issuer);
+
+            } else if( contains<asset_reserve_operation>( op )){
+
+                auto result_op = op.get<asset_reserve_operation>();
+                asset_moves[result_op.amount_to_reserve.asset_id].insert(result_op.payer);
+
+            } else if( contains<csaf_collect_operation>( op )){
+
+                auto result_op = op.get<csaf_collect_operation>();
+                asset_moves[result_op.amount.asset_id].insert(result_op.from);
+                asset_moves[result_op.amount.asset_id].insert(result_op.to);
+
+            } else if( contains<csaf_lease_operation>( op )){
+
+                auto result_op = op.get<csaf_lease_operation>();
+                asset_moves[result_op.amount.asset_id].insert(result_op.from);
+                asset_moves[result_op.amount.asset_id].insert(result_op.to);
 
             }
         }
