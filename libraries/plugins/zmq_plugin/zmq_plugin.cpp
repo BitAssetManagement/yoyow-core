@@ -42,12 +42,11 @@ namespace {
   const char* SENDER_BIND_DEFAULT = "tcp://127.0.0.1:5556";
   const char* WHITELIST_OPT = "zmq-whitelist-account";
   
-  const int32_t MSGTYPE_ACTION_TRACE = 0;
-  const int32_t MSGTYPE_IRREVERSIBLE_BLOCK = 1;
-  const int32_t MSGTYPE_FORK = 2;
-  const int32_t MSGTYPE_ACCEPTED_BLOCK = 3;
-  const int32_t MSGTYPE_FAILED_TX = 4;
-  const int32_t MSGTYPE_BALANCE_RESOURCE = 5;
+  const int32_t MSGTYPE_ACCEPTED_BLOCK = 0;
+  const int32_t MSGTYPE_FORK = 1;
+  const int32_t MSGTYPE_IRREVERSIBLE_BLOCK = 2;
+  const int32_t MSGTYPE_FAILED_TX = 3;
+  const int32_t MSGTYPE_BALANCE_RESOURCE = 4;
 }
 
 namespace graphene { namespace zmq_plugin {
@@ -195,8 +194,6 @@ class zmq_plugin_impl
             std::set<account_uid_type> accounts;
             assetmoves asset_moves;
             find_account_and_tokens( op, accounts, asset_moves );
-
-
             // 获取余额
             for(auto asset_itr = asset_moves.begin(); asset_itr != asset_moves.end(); asset_itr++){
                 auto asset_id = asset_itr->first;
@@ -212,7 +209,6 @@ class zmq_plugin_impl
                     }
                 }
             }
-
             // send_msg(fc::json::to_string(zoo), MSGTYPE_ACTION_TRACE, 0);
         }
 
@@ -261,12 +257,6 @@ class zmq_plugin_impl
 
             }
         }
-
-        void on_pending_transaction(const signed_transaction& trx){
-            send_msg(fc::json::to_string(trx), MSGTYPE_ACTION_TRACE, 0);
-        }
-
-
         string get_accounts_balances(const std::vector<asset_aid_type>& assets_id){
             zmq_accounts_info_object zai;
             const auto& idx = database().get_index_type<account_index>().indices().get<by_id>();
