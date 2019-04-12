@@ -42,12 +42,11 @@ namespace {
   const char* SENDER_BIND_DEFAULT = "tcp://127.0.0.1:5556";
   const char* WHITELIST_OPT = "zmq-whitelist-account";
   
-  const int32_t MSGTYPE_ACTION_TRACE = 0;
-  const int32_t MSGTYPE_IRREVERSIBLE_BLOCK = 1;
-  const int32_t MSGTYPE_FORK = 2;
-  const int32_t MSGTYPE_ACCEPTED_BLOCK = 3;
-  const int32_t MSGTYPE_FAILED_TX = 4;
-  const int32_t MSGTYPE_BALANCE_RESOURCE = 5;
+  const int32_t MSGTYPE_ACCEPTED_BLOCK = 0;
+  const int32_t MSGTYPE_FORK = 1;
+  const int32_t MSGTYPE_IRREVERSIBLE_BLOCK = 2;
+  const int32_t MSGTYPE_FAILED_TX = 3;
+  const int32_t MSGTYPE_BALANCE_RESOURCE = 4;
 }
 
 namespace graphene { namespace zmq_plugin {
